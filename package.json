@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ingest:extract": "node scripts/ingest/from-capture.mjs",
+    "ingest:validate": "node scripts/ingest/validate-skins.mjs",
+    "ingest:generate": "node scripts/ingest/generate-ts.mjs",
+    "ingest:all": "npm run ingest:extract && npm run ingest:validate && npm run ingest:generate"
   },
   "dependencies": {
     "react": "^19.2.4",

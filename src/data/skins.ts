@@ -1,4 +1,5 @@
 import type { SkinRecord } from '../types'
+import { GENERATED_DATASET_META, GENERATED_SKINS } from './skins.generated'
 
 type SeedSkin = Omit<SkinRecord, 'imageUrl' | 'source'>
 
@@ -258,16 +259,26 @@ const seedSkins: SeedSkin[] = [
   },
 ]
 
-export const SKINS: SkinRecord[] = seedSkins.map((skin, index) => ({
+const fallbackSkins: SkinRecord[] = seedSkins.map((skin, index) => ({
   ...skin,
   imageUrl: buildPlaceholderImage(skin.heroName, skin.skinName, index),
   source: 'starter-curated-v1',
 }))
 
+const usingGeneratedData = GENERATED_SKINS.length > 0
+
+export const SKINS: SkinRecord[] = usingGeneratedData
+  ? GENERATED_SKINS
+  : fallbackSkins
+
 export const DATASET_META = {
-  version: '0.1.0',
-  source: 'starter-curated-v1',
-  items: SKINS.length,
-  note:
-    'Starter fan dataset using placeholders; replace with official mappings via ingestion pipeline.',
+  ...(usingGeneratedData
+    ? GENERATED_DATASET_META
+    : {
+        version: '0.1.0',
+        source: 'starter-curated-v1',
+        items: SKINS.length,
+        note:
+          'Starter fan dataset using placeholders; replace with official mappings via ingestion pipeline.',
+      }),
 }

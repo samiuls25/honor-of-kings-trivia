@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Ingestion captures (can contain large payloads)
+data/raw/*.har
+data/raw/*.json
+!data/raw/.gitkeep
+!data/raw/README.md
+data/processed/*.json
+!data/processed/.gitkeep
