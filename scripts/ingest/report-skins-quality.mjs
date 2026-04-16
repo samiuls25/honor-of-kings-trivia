@@ -2,8 +2,8 @@ import fs from 'node:fs/promises'
 
 const inputPath = process.argv[2] || 'data/processed/skins.normalized.json'
 
-function isAscii(value) {
-  return !/[^\x00-\x7F]/.test(value)
+function hasCjk(value) {
+  return /[\u3400-\u9FFF]/u.test(String(value))
 }
 
 async function main() {
@@ -34,7 +34,7 @@ async function main() {
       missingImageRows += 1
     }
 
-    if (!isAscii(`${record.heroName} ${record.skinName}`)) {
+    if (hasCjk(`${record.heroName} ${record.skinName}`)) {
       nonEnglishRows += 1
     }
   }

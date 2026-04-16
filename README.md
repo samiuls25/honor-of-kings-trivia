@@ -83,9 +83,13 @@ Additional source-isolated pipelines:
 # Secondary skins source (qing API) -> src/data/skins.qing.generated.ts
 npm run ingest:qing:all
 
-# OST source JSON -> src/data/ost.generated.ts
+# OST playlist fetch + normalization -> src/data/ost.generated.ts
 npm run ingest:ost:all
 ```
+
+`ingest:qing:all` now includes an automatic Chinese -> English translation step before validation and generation.
+
+`ingest:ost:all` now auto-fetches playlist metadata from the Honor of Kings Audio Team channel (free, no API key), then normalizes and generates runtime OST data.
 
 Output files:
 
@@ -108,7 +112,15 @@ The app keeps source separation intact:
 
 ## OST source file format
 
-Place your OST source file at `data/raw/hok-ost-source.json` and run `npm run ingest:ost:all`.
+Auto-fetch command:
+
+```bash
+npm run ingest:ost:fetch
+```
+
+This writes playlist-derived metadata into `data/raw/hok-ost-source.json`, then `npm run ingest:ost:all` makes OST mode playable.
+
+You can still provide your own manual OST source file at `data/raw/hok-ost-source.json` if you prefer.
 
 Example custom shape:
 

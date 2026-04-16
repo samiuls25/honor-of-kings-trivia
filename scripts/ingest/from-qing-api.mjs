@@ -106,7 +106,7 @@ function normalizeSkinRecords(heroes, source) {
       continue
     }
 
-    for (const skin of skins) {
+    for (const [skinIndex, skin] of skins.entries()) {
       if (!skin || typeof skin !== 'object') {
         continue
       }
@@ -122,7 +122,9 @@ function normalizeSkinRecords(heroes, source) {
         nonEnglishRows += 1
       }
 
-      const skinSlug = toSlug(skinName) || toSlug(imageUrl) || 'skin'
+      const skinSlug =
+        toSlug(skinName) ||
+        `skin-${String(skinIndex + 1).padStart(3, '0')}`
       const skinId = `${heroId}-${skinSlug}`
       if (seenIds.has(skinId)) {
         continue

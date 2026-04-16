@@ -22,6 +22,9 @@ Notes:
 To enable OST trivia mode, add a source JSON file:
 - `data/raw/hok-ost-source.json`
 
+Quickest path (recommended):
+- Run `npm run ingest:ost:fetch` to auto-populate this file from Honor of Kings Audio Team playlists.
+
 Accepted shapes:
 - Array of tracks (custom format)
 - YouTube API style object with `items[]`
