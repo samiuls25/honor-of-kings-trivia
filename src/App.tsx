@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OST_DATASET_META, OST_TRACKS } from './data/ost'
 import {
   SKINS_HYBRID,
@@ -19,6 +19,12 @@ import {
   validateOstDataset,
   validateSkinDataset,
 } from './game/engine'
+import {
+  detectSharedVisitCategory,
+  fetchMetricsSummary,
+  formatCompactCount,
+  trackMetricEvent,
+} from './metrics'
 import type {
   AnswerMode,
   GameConfig,
@@ -155,7 +161,7 @@ interface Option<TValue extends string> {
 
 type ViewMode = 'play' | 'gallery' | 'ost-hall'
 const WAVE_BARS = 40
-const APP_VERSION_LABEL = 'V1.3.0'
+const APP_VERSION_LABEL = 'V1.3.1'
 const IMAGE_PRELOAD_HOSTS = [
   'https://world.honorofkings.com',
   'https://game.gtimg.cn',
@@ -585,6 +591,16 @@ function App() {
   const [hallDuration, setHallDuration] = useState(0)
   const [hallPlayerError, setHallPlayerError] = useState<string | null>(null)
   const [shareFeedback, setShareFeedback] = useState<string | null>(null)
+  const [metricsSnapshot, setMetricsSnapshot] = useState<
+    Awaited<ReturnType<typeof fetchMetricsSummary>>
+  >(null)
+  const [showLiveStats, setShowLiveStats] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true
+    }
+
+    return window.localStorage.getItem('hok-live-stats-hidden') !== '1'
+  })
   const [incomingChallenge] = useState<SharedChallenge | null>(
     initialRouteState.incomingChallenge,
   )
@@ -645,6 +661,54 @@ function App() {
       })
     }, 2800)
   }
+
+  const refreshMetricsSnapshot = useCallback(() => {
+    void fetchMetricsSummary().then((snapshot) => {
+      if (!snapshot) {
+        return
+      }
+      setMetricsSnapshot(snapshot)
+    })
+  }, [])
+
+  useEffect(() => {
+    refreshMetricsSnapshot()
+
+    const timerId = window.setInterval(() => {
+      refreshMetricsSnapshot()
+    }, 60000)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [refreshMetricsSnapshot])
+
+  useEffect(() => {
+    trackMetricEvent('site_view')
+
+    const shareCategory = detectSharedVisitCategory(new URLSearchParams(window.location.search))
+    if (shareCategory) {
+      trackMetricEvent('share_visited', shareCategory)
+    }
+
+    // Pull a fresh snapshot shortly after initial events are sent.
+    window.setTimeout(() => {
+      refreshMetricsSnapshot()
+    }, 450)
+  }, [refreshMetricsSnapshot])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (showLiveStats) {
+      window.localStorage.removeItem('hok-live-stats-hidden')
+      return
+    }
+
+    window.localStorage.setItem('hok-live-stats-hidden', '1')
+  }, [showLiveStats])
 
   useEffect(() => {
     return () => {
@@ -1183,6 +1247,8 @@ function App() {
       `(${game.correct} correct, ${game.wrong} wrong, best streak ${game.bestStreak}). ` +
       `Mode: ${modeSummary}. Can you beat this challenge?`
 
+    trackMetricEvent('share_generated', 'challenge')
+
     try {
       if (navigator.share) {
         await navigator.share({
@@ -1201,6 +1267,7 @@ function App() {
     }
 
     clearShareFeedbackSoon()
+    refreshMetricsSnapshot()
   }
 
   const shareGalleryCard = async (skin: SkinRecord) => {
@@ -1208,6 +1275,8 @@ function App() {
     const shareText =
       `${skin.skinName} (${skin.heroName}) in Honor of Kings Trivia gallery. ` +
       'Open this link to jump directly to the card.'
+
+    trackMetricEvent('share_generated', 'gallery')
 
     try {
       if (navigator.share) {
@@ -1227,6 +1296,7 @@ function App() {
     }
 
     clearShareFeedbackSoon()
+    refreshMetricsSnapshot()
   }
 
   const shareOstTrack = async () => {
@@ -1239,6 +1309,8 @@ function App() {
     const shareText =
       `Check out ${formatTrackTitle(selectedHallTrack.trackTitle)} by ` +
       `${selectedHallTrack.artistName} in the Honor of Kings OST Hall.`
+
+    trackMetricEvent('share_generated', 'ost')
 
     try {
       if (navigator.share) {
@@ -1258,6 +1330,7 @@ function App() {
     }
 
     clearShareFeedbackSoon()
+    refreshMetricsSnapshot()
   }
 
   const selectHallTrack = (trackId: string, scrollToPlayer: boolean) => {
@@ -1302,7 +1375,10 @@ function App() {
     }
 
     try {
-      setGame(buildInitialGame(config))
+      const initialGame = buildInitialGame(config)
+      setGame(initialGame)
+      trackMetricEvent('game_started', config.target === 'ost-title' ? 'ost' : 'standard')
+      refreshMetricsSnapshot()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start this mode.'
       setSetupError(message)
@@ -1327,7 +1403,10 @@ function App() {
     }
 
     try {
-      setGame(buildInitialGame(game.config))
+      const nextGame = buildInitialGame(game.config)
+      setGame(nextGame)
+      trackMetricEvent('game_started', game.config.target === 'ost-title' ? 'ost' : 'standard')
+      refreshMetricsSnapshot()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start this mode.'
       setSetupError(message)
@@ -1609,6 +1688,61 @@ function App() {
           Master hero, skin, and soundtrack trivia across multiple modes, then share your
           best runs, favorite gallery cards, and top OST tracks with friends and the community!
         </p>
+
+        {metricsSnapshot && (
+          <>
+            <div className="live-stats-toggle-row">
+              <p className="live-stats-toggle-note">Live Community Metrics</p>
+              <button
+                type="button"
+                className="live-stats-toggle-button"
+                onClick={() => setShowLiveStats((previous) => !previous)}
+                aria-expanded={showLiveStats}
+              >
+                {showLiveStats ? 'Hide Stats' : 'Show Stats'}
+              </button>
+            </div>
+
+            {showLiveStats && (
+              <section className="live-stats-strip" aria-label="Community metrics">
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Site Views</p>
+                  <p className="live-stat-value">{formatCompactCount(metricsSnapshot.site_views)}</p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Unique Visitors</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.unique_site_visitors)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Share Links Generated</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.share_links_generated)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Share Links Visited</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.share_links_visited)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Normal Games Played</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.games_played_standard)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">OST Games Played</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.games_played_ost)}
+                  </p>
+                </article>
+              </section>
+            )}
+          </>
+        )}
 
         <div className="view-switch" role="tablist" aria-label="App sections">
           <button
