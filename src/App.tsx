@@ -160,6 +160,7 @@ const IMAGE_PRELOAD_HOSTS = [
   'https://game.gtimg.cn',
   'https://game-1255653016.file.myqcloud.com',
 ]
+const OST_TRACK_SUFFIX = /\s*\|\s*Honor of Kings Original Game Soundtrack\s*$/i
 const preloadedImageUrls = new Set<string>()
 
 type SharedChallenge = {
@@ -213,6 +214,15 @@ function primeImage(url: string) {
   const image = new Image()
   image.decoding = 'async'
   image.src = url
+}
+
+function formatOptionLabel(option: string, target: GuessTarget): string {
+  if (target !== 'ost-title') {
+    return option
+  }
+
+  const trimmed = option.replace(OST_TRACK_SUFFIX, '').trim()
+  return trimmed || option
 }
 
 function isGuessTarget(value: string | null): value is GuessTarget {
@@ -1589,7 +1599,9 @@ function App() {
                     disabled={Boolean(feedback)}
                     onClick={() => submitAnswer(option)}
                   >
-                    <span className="title">{option}</span>
+                    <span className="title">
+                      {formatOptionLabel(option, game.config.target)}
+                    </span>
                   </button>
                 ))}
               </div>
