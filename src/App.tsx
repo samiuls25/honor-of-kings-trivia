@@ -155,7 +155,7 @@ interface Option<TValue extends string> {
 
 type ViewMode = 'play' | 'gallery' | 'ost-hall'
 const WAVE_BARS = 40
-const APP_VERSION_LABEL = 'V1.2'
+const APP_VERSION_LABEL = 'V1.3.0'
 const IMAGE_PRELOAD_HOSTS = [
   'https://world.honorofkings.com',
   'https://game.gtimg.cn',
@@ -1606,8 +1606,8 @@ function App() {
         <p className="eyebrow">{APP_VERSION_LABEL}</p>
         <h1>Honor of Kings Trivia</h1>
         <p className="lede">
-          Master hero, skin, and OST trivia, then drop shareable challenge links
-          and gallery cards to see who really deserves the Honor of Kings.
+          Master hero, skin, and soundtrack trivia across multiple modes, then share your
+          best runs, favorite gallery cards, and top OST tracks with friends and the community!
         </p>
 
         <div className="view-switch" role="tablist" aria-label="App sections">
