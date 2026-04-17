@@ -12,3 +12,25 @@ Suggested flow:
 3. Reload page and scroll so hero/skin data loads.
 4. Export network as HAR.
 5. Save as `data/raw/hok-skins-capture.har`.
+
+Notes:
+- Large HAR files are expected. A file with tens of thousands of lines is normal.
+- Keep previous captures if you want to compare extraction outputs over time.
+
+## OST Source Input
+
+To enable OST trivia mode, add a source JSON file:
+- `data/raw/hok-ost-source.json`
+
+Quickest path (recommended):
+- Run `npm run ingest:ost:fetch` to auto-populate this file from Honor of Kings Audio Team playlists.
+
+Accepted shapes:
+- Array of tracks (custom format)
+- YouTube API style object with `items[]`
+- Object with `tracks[]`
+
+Minimum per track fields (directly or via YouTube fields):
+- title or trackTitle
+- imageUrl or thumbnail
+- videoId or watch URL (used to build embed audio player URL)

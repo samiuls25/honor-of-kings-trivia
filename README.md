@@ -18,6 +18,7 @@ A fun little trivia web app for guessing heroes and skins from splash art. Test 
 - Question target modes:
   - Guess Hero Name
   - Guess Skin Name
+  - Guess OST Track Title
 - Answer input modes:
   - Typed entry (case-insensitive)
   - 4-option multiple choice
@@ -27,6 +28,15 @@ A fun little trivia web app for guessing heroes and skins from splash art. Test 
   - Sudden Death (first wrong ends the run)
 - Gallery mode:
   - Separate non-game skin gallery for browsing artwork
+  - Source selector (Official, qing translated, or Hybrid)
+- Sharing:
+  - Results page includes Share Challenge with setup + score encoded in URL
+  - Gallery lightbox includes Share Card for direct deep links
+  - Dynamic social preview metadata is generated at /share via Netlify Function
+  - Shared challenge links preload mode settings so friends can instantly retry
+- OST mode:
+  - Embedded audio/video player for track-based questions
+  - Optional artwork reveal toggle while answering
 - Responsive UI for desktop and mobile.
 
 ## Stack
@@ -45,11 +55,38 @@ npm install
 npm run dev
 ```
 
+To test the Netlify share metadata endpoint locally (optional):
+
+1. Install Netlify CLI.
+2. Run local Netlify dev server.
+
+```bash
+npx netlify dev
+```
+
 Build production bundle:
 
 ```bash
 npm run build
 ```
+
+## Deploy notes (important)
+
+If you deploy only the `dist` folder manually, `/share` metadata links will not work because the Netlify function is outside `dist`.
+
+Use one of these deployment methods so the function is included:
+
+1. Git-connected Netlify site (recommended): Netlify builds and deploys from source.
+2. Netlify CLI deploy with functions:
+
+```bash
+npx netlify deploy --prod --dir=dist --functions=netlify/functions
+```
+
+Function and routing files:
+
+- `netlify/functions/share.js`
+- `netlify.toml`
 
 ## Real data ingestion workflow
 
@@ -73,13 +110,67 @@ npm run ingest:validate
 npm run ingest:generate
 ```
 
+Additional source-isolated pipelines:
+
+```bash
+# Secondary skins source (qing API) -> src/data/skins.qing.generated.ts
+npm run ingest:qing:all
+
+# OST playlist fetch + normalization -> src/data/ost.generated.ts
+npm run ingest:ost:all
+```
+
+`ingest:qing:all` now includes an automatic Chinese -> English translation step before validation and generation.
+
+`ingest:ost:all` now auto-fetches playlist metadata from the Honor of Kings Audio Team channel (free, no API key), then normalizes and generates runtime OST data.
+
 Output files:
 
 - data/processed/skins.normalized.json
 - data/processed/meta.json
 - src/data/skins.generated.ts
+- data/processed/skins.qing.normalized.json
+- data/processed/meta.qing.json
+- src/data/skins.qing.generated.ts
+- data/processed/ost.normalized.json
+- data/processed/ost-meta.json
+- src/data/ost.generated.ts
 
-At runtime, src/data/skins.ts automatically uses generated data when available and falls back to the starter seed dataset otherwise.
+At runtime, the app now keeps skin sources separated and lets you choose the active source in setup/gallery:
+- Official Capture (recommended quality)
+- qing API (translated to English)
+- Hybrid backfill
+
+The app keeps source separation intact:
+- Existing website capture extractor remains primary and highest quality.
+- qing API is translated and can be selected independently (or in hybrid mode).
+- qing thumbnail crop parameters are stripped during ingest to improve image quality.
+- OST dataset is independent and never overwrites skin capture files.
+
+## OST source file format
+
+Auto-fetch command:
+
+```bash
+npm run ingest:ost:fetch
+```
+
+This writes playlist-derived metadata into `data/raw/hok-ost-source.json`, then `npm run ingest:ost:all` makes OST mode playable.
+
+You can still provide your own manual OST source file at `data/raw/hok-ost-source.json` if you prefer.
+
+Example custom shape:
+
+```json
+[
+  {
+    "trackTitle": "Track Name",
+    "artistName": "Honor of Kings Audio Team",
+    "videoId": "YOUTUBE_VIDEO_ID",
+    "imageUrl": "https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg"
+  }
+]
+```
 
 ## Data model
 
