@@ -981,13 +981,18 @@ function App() {
                 {!showOstArtwork ? (
                   <div className={ostPlaying ? 'wave-stage playing' : 'wave-stage'}>
                     <div className="wave-grid">
-                      {waveHeights.map((height, index) => (
+                      {Array.from({ length: WAVE_BARS }, (_, index) => {
+                        const height =
+                          waveHeights[index] ?? 0.18 + ((index % 7) / 7) * 0.58
+
+                        return (
                         <span
                           key={`wave-${index}`}
                           className="wave-bar"
                           style={{ height: `${Math.round(height * 100)}%` }}
                         />
-                      ))}
+                        )
+                      })}
                     </div>
                     <p className="wave-title">Audio Visualizer</p>
                   </div>

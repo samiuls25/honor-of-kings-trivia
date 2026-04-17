@@ -360,30 +360,37 @@ h3 {
     radial-gradient(circle at 22% 18%, rgba(105, 211, 227, 0.18), transparent 36%),
     radial-gradient(circle at 82% 80%, rgba(118, 211, 168, 0.16), transparent 32%),
     rgba(8, 18, 34, 0.95);
-  padding: 1rem 0.85rem;
   aspect-ratio: 16 / 9;
-  display: grid;
-  align-content: center;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 0.8rem 0.7rem 0.6rem;
 }
 
 .wave-grid {
   display: grid;
-  grid-template-columns: repeat(40, 1fr);
+  grid-template-columns: repeat(40, minmax(0, 1fr));
   align-items: end;
-  gap: 0.28rem;
-  height: min(70%, 300px);
+  gap: 0.22rem;
+  flex: 1;
+  min-height: 160px;
 }
 
 .wave-bar {
   display: block;
   height: 22%;
+  width: 100%;
+  min-height: 8px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(118, 211, 168, 0.95), rgba(105, 211, 227, 0.4));
+  background: linear-gradient(180deg, rgba(146, 250, 205, 0.95), rgba(105, 211, 227, 0.4));
+  box-shadow: 0 0 8px rgba(118, 211, 168, 0.22);
   transition: height 140ms linear;
 }
 
 .wave-title {
-  margin: 0.65rem 0 0;
+  margin: 0.45rem 0 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.78rem;
@@ -658,7 +665,11 @@ h3 {
   }
 
   .wave-grid {
-    height: min(66%, 210px);
+    min-height: 120px;
     gap: 0.18rem;
+  }
+
+  .wave-stage {
+    min-height: 210px;
   }
 }
