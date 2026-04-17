@@ -152,7 +152,7 @@ interface Option<TValue extends string> {
   disabled?: boolean
 }
 
-type ViewMode = 'play' | 'gallery'
+type ViewMode = 'play' | 'gallery' | 'ost-hall'
 const WAVE_BARS = 40
 const APP_VERSION_LABEL = 'V1.2'
 const IMAGE_PRELOAD_HOSTS = [
@@ -221,8 +221,12 @@ function formatOptionLabel(option: string, target: GuessTarget): string {
     return option
   }
 
-  const trimmed = option.replace(OST_TRACK_SUFFIX, '').trim()
+  const trimmed = formatTrackTitle(option)
   return trimmed || option
+}
+
+function formatTrackTitle(title: string): string {
+  return title.replace(OST_TRACK_SUFFIX, '').trim()
 }
 
 function isGuessTarget(value: string | null): value is GuessTarget {
@@ -427,6 +431,15 @@ function resolveInitialRouteState(): InitialRouteState {
     }
   }
 
+  if (requestedView === 'ost-hall') {
+    return {
+      viewMode: 'ost-hall',
+      config: defaultConfig,
+      incomingChallenge: null,
+      selectedGallerySkin: null,
+    }
+  }
+
   if (params.get('challenge') === '1') {
     const targetParam = params.get('target')
     const sourceParam = params.get('source')
@@ -536,6 +549,9 @@ function App() {
   const ytPlayerHostRef = useRef<HTMLDivElement | null>(null)
   const ytPlayerRef = useRef<YtPlayer | null>(null)
   const ytTickerRef = useRef<number | null>(null)
+  const hallPlayerHostRef = useRef<HTMLDivElement | null>(null)
+  const hallPlayerRef = useRef<YtPlayer | null>(null)
+  const hallTickerRef = useRef<number | null>(null)
   const waveTickerRef = useRef<number | null>(null)
   const waveProfileRef = useRef<WaveProfile>(createWaveProfile('default-track'))
   const [ostPlayerReady, setOstPlayerReady] = useState(false)
@@ -543,6 +559,14 @@ function App() {
   const [ostCurrentTime, setOstCurrentTime] = useState(0)
   const [ostDuration, setOstDuration] = useState(0)
   const [ostPlayerError, setOstPlayerError] = useState<string | null>(null)
+  const [selectedHallTrackId, setSelectedHallTrackId] = useState<string>(
+    () => OST_TRACKS[0]?.id ?? '',
+  )
+  const [hallPlayerReady, setHallPlayerReady] = useState(false)
+  const [hallPlaying, setHallPlaying] = useState(false)
+  const [hallCurrentTime, setHallCurrentTime] = useState(0)
+  const [hallDuration, setHallDuration] = useState(0)
+  const [hallPlayerError, setHallPlayerError] = useState<string | null>(null)
   const [shareFeedback, setShareFeedback] = useState<string | null>(null)
   const [incomingChallenge] = useState<SharedChallenge | null>(
     initialRouteState.incomingChallenge,
@@ -574,10 +598,17 @@ function App() {
   )
   const gameStatus = game?.status ?? 'ended'
   const gameDeadlineMs = game?.deadlineMs ?? null
+  const selectedHallTrack = useMemo(
+    () => OST_TRACKS.find((track) => track.id === selectedHallTrackId) ?? OST_TRACKS[0] ?? null,
+    [selectedHallTrackId],
+  )
   const activeOstVideoId =
     game?.status === 'playing' && game.question.mediaType === 'audio'
       ? parseYouTubeVideoId(game.question.audioUrl)
       : ''
+  const activeHallVideoId = selectedHallTrack
+    ? parseYouTubeVideoId(selectedHallTrack.audioUrl)
+    : ''
 
   const replaceUrlParams = (updater: (params: URLSearchParams) => void) => {
     const params = new URLSearchParams(window.location.search)
@@ -660,6 +691,16 @@ function App() {
 
     primeImage(selectedGallerySkin.imageUrl)
   }, [selectedGallerySkin])
+
+  useEffect(() => {
+    if (viewMode !== 'ost-hall') {
+      return
+    }
+
+    for (const track of OST_TRACKS.slice(0, 12)) {
+      primeImage(track.imageUrl)
+    }
+  }, [viewMode])
 
   useEffect(() => {
     if (gameStatus !== 'playing' || gameDeadlineMs === null) {
@@ -911,6 +952,137 @@ function App() {
     }
   }, [ostPlaying, activeOstVideoId])
 
+  useEffect(() => {
+    const shouldCleanup = viewMode !== 'ost-hall' || !activeHallVideoId
+    if (shouldCleanup) {
+      if (hallTickerRef.current !== null) {
+        window.clearInterval(hallTickerRef.current)
+        hallTickerRef.current = null
+      }
+
+      if (hallPlayerRef.current) {
+        hallPlayerRef.current.destroy()
+        hallPlayerRef.current = null
+      }
+      return
+    }
+
+    let cancelled = false
+
+    const setup = async () => {
+      try {
+        await ensureYouTubeIframeApi()
+
+        if (cancelled || !hallPlayerHostRef.current || !window.YT?.Player) {
+          return
+        }
+
+        if (hallPlayerRef.current) {
+          hallPlayerRef.current.destroy()
+          hallPlayerRef.current = null
+        }
+
+        setHallPlayerReady(false)
+        setHallPlaying(false)
+        setHallCurrentTime(0)
+        setHallDuration(0)
+        setHallPlayerError(null)
+
+        const player = new window.YT.Player(hallPlayerHostRef.current, {
+          height: '0',
+          width: '0',
+          videoId: activeHallVideoId,
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3,
+            modestbranding: 1,
+            playsinline: 1,
+            rel: 0,
+          },
+          events: {
+            onReady: (event) => {
+              if (cancelled) {
+                return
+              }
+              setHallPlayerReady(true)
+              const duration = Number(event.target.getDuration?.() || 0)
+              setHallDuration(duration)
+            },
+            onStateChange: (event) => {
+              if (cancelled || !window.YT?.PlayerState) {
+                return
+              }
+
+              const isPlaying = event.data === window.YT.PlayerState.PLAYING
+              setHallPlaying(isPlaying)
+
+              if (event.data === window.YT.PlayerState.ENDED) {
+                setHallPlaying(false)
+              }
+            },
+            onError: () => {
+              if (cancelled) {
+                return
+              }
+              setHallPlayerError('Audio could not be loaded for this track.')
+            },
+          },
+        })
+
+        hallPlayerRef.current = player
+      } catch {
+        if (!cancelled) {
+          setHallPlayerError('Audio engine failed to initialize.')
+        }
+      }
+    }
+
+    setup()
+
+    return () => {
+      cancelled = true
+      if (hallTickerRef.current !== null) {
+        window.clearInterval(hallTickerRef.current)
+        hallTickerRef.current = null
+      }
+      if (hallPlayerRef.current) {
+        hallPlayerRef.current.destroy()
+        hallPlayerRef.current = null
+      }
+    }
+  }, [viewMode, activeHallVideoId])
+
+  useEffect(() => {
+    if (!hallPlayerReady || !hallPlayerRef.current || viewMode !== 'ost-hall') {
+      return
+    }
+
+    hallTickerRef.current = window.setInterval(() => {
+      const player = hallPlayerRef.current
+      if (!player) {
+        return
+      }
+
+      const current = Number(player.getCurrentTime?.() || 0)
+      const duration = Number(player.getDuration?.() || 0)
+      setHallCurrentTime(current)
+
+      if (duration > 0) {
+        setHallDuration(duration)
+      }
+    }, 220)
+
+    return () => {
+      if (hallTickerRef.current !== null) {
+        window.clearInterval(hallTickerRef.current)
+        hallTickerRef.current = null
+      }
+    }
+  }, [hallPlayerReady, viewMode, activeHallVideoId])
+
   const copyTextToClipboard = async (text: string): Promise<boolean> => {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
@@ -1114,6 +1286,34 @@ function App() {
     })
   }
 
+  const openOstHall = () => {
+    setViewMode('ost-hall')
+    setGame(null)
+    setFeedback(null)
+    setSetupError(null)
+    setShareFeedback(null)
+    setTypedGuess('')
+    setSelectedGallerySkin(null)
+
+    if (!selectedHallTrackId && OST_TRACKS[0]?.id) {
+      setSelectedHallTrackId(OST_TRACKS[0].id)
+    }
+
+    replaceUrlParams((params) => {
+      params.set('view', 'ost-hall')
+      params.delete('source')
+      params.delete('skin')
+      params.delete('challenge')
+      params.delete('target')
+      params.delete('answer')
+      params.delete('scoring')
+      params.delete('score')
+      params.delete('correct')
+      params.delete('wrong')
+      params.delete('best')
+    })
+  }
+
   const openPlay = () => {
     setViewMode('play')
     setSetupError(null)
@@ -1243,6 +1443,21 @@ function App() {
     setOstPlaying(true)
   }
 
+  const toggleHallPlayback = () => {
+    if (!hallPlayerRef.current || !hallPlayerReady) {
+      return
+    }
+
+    if (hallPlaying) {
+      hallPlayerRef.current.pauseVideo()
+      setHallPlaying(false)
+      return
+    }
+
+    hallPlayerRef.current.playVideo()
+    setHallPlaying(true)
+  }
+
   const seekOstBy = (deltaSeconds: number) => {
     if (!ytPlayerRef.current || !ostPlayerReady) {
       return
@@ -1254,6 +1469,19 @@ function App() {
 
     ytPlayerRef.current.seekTo(next, true)
     setOstCurrentTime(next)
+  }
+
+  const seekHallBy = (deltaSeconds: number) => {
+    if (!hallPlayerRef.current || !hallPlayerReady) {
+      return
+    }
+
+    const current = Number(hallPlayerRef.current.getCurrentTime?.() || 0)
+    const duration = Number(hallPlayerRef.current.getDuration?.() || 0)
+    const next = Math.max(0, Math.min(duration || current + deltaSeconds, current + deltaSeconds))
+
+    hallPlayerRef.current.seekTo(next, true)
+    setHallCurrentTime(next)
   }
 
   return (
@@ -1288,6 +1516,17 @@ function App() {
             onClick={openGallery}
           >
             Skin Gallery
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'ost-hall'}
+            className={
+              viewMode === 'ost-hall' ? 'switch-button active' : 'switch-button'
+            }
+            onClick={openOstHall}
+          >
+            OST Hall
           </button>
         </div>
       </header>
@@ -1671,6 +1910,108 @@ function App() {
             </button>
           </div>
           {shareFeedback && <p className="result-subtitle">{shareFeedback}</p>}
+        </section>
+      )}
+
+      {viewMode === 'ost-hall' && (
+        <section className="panel ost-hall-panel">
+          <div className="gallery-head">
+            <h2>OST Hall</h2>
+            <p className="result-subtitle">
+              Browse soundtrack artwork and preview tracks with quick controls.
+            </p>
+            <div className="chip">Tracks: {OST_TRACKS.length}</div>
+          </div>
+
+          {OST_TRACKS.length === 0 && (
+            <p className="result-subtitle setup-error">
+              No OST tracks loaded yet. Run ingest:ost:all to populate OST Hall.
+            </p>
+          )}
+
+          {selectedHallTrack && OST_TRACKS.length > 0 && (
+            <article className="question-card ost-hall-player">
+              <div className="yt-audio-host" ref={hallPlayerHostRef} aria-hidden="true" />
+              <img
+                src={selectedHallTrack.imageUrl}
+                alt={`Track artwork ${selectedHallTrack.trackTitle}`}
+                className="track-artwork"
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
+              />
+              <h3>{formatTrackTitle(selectedHallTrack.trackTitle)}</h3>
+              <p className="result-subtitle">Artist: {selectedHallTrack.artistName}</p>
+
+              <div className="audio-controls">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={!hallPlayerReady}
+                  onClick={() => seekHallBy(-5)}
+                >
+                  -5s
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={!hallPlayerReady}
+                  onClick={toggleHallPlayback}
+                >
+                  {hallPlaying ? 'Pause' : 'Play'}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={!hallPlayerReady}
+                  onClick={() => seekHallBy(5)}
+                >
+                  +5s
+                </button>
+              </div>
+
+              <p className="audio-time">
+                {formatAudioTime(hallCurrentTime)} / {formatAudioTime(hallDuration)}
+              </p>
+
+              {hallPlayerError && (
+                <p className="result-subtitle setup-error">{hallPlayerError}</p>
+              )}
+            </article>
+          )}
+
+          {OST_TRACKS.length > 0 && (
+            <div className="ost-track-grid">
+              {OST_TRACKS.map((track, index) => (
+                <article
+                  key={track.id}
+                  className={
+                    selectedHallTrack?.id === track.id
+                      ? 'ost-track-card active'
+                      : 'ost-track-card'
+                  }
+                >
+                  <button
+                    type="button"
+                    className="ost-track-button"
+                    onClick={() => setSelectedHallTrackId(track.id)}
+                  >
+                    <img
+                      src={track.imageUrl}
+                      alt={`Artwork ${track.trackTitle}`}
+                      loading={index < 8 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      fetchPriority={index < 8 ? 'high' : 'auto'}
+                    />
+                    <div className="gallery-meta">
+                      <p className="gallery-skin">{formatTrackTitle(track.trackTitle)}</p>
+                      <p className="gallery-hero">{track.artistName}</p>
+                    </div>
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

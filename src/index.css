@@ -567,6 +567,65 @@ h3 {
   gap: 1rem;
 }
 
+.ost-hall-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.ost-hall-player {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ost-hall-player h3 {
+  margin: 0.15rem 0 0;
+}
+
+.ost-track-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ost-track-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(18, 34, 59, 0.72);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.ost-track-card.active {
+  border-color: rgba(118, 211, 168, 0.85);
+  box-shadow: 0 0 0 1px rgba(118, 211, 168, 0.28);
+}
+
+.ost-track-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 217, 164, 0.52);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
+.ost-track-button {
+  border: 0;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ost-track-button img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+}
+
 .gallery-head {
   display: flex;
   flex-wrap: wrap;
@@ -736,7 +795,7 @@ h3 {
   }
 
   .switch-button {
-    width: 50%;
+    width: 33.3333%;
     text-align: center;
   }
 
