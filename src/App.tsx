@@ -155,6 +155,12 @@ interface Option<TValue extends string> {
 type ViewMode = 'play' | 'gallery'
 const WAVE_BARS = 40
 const APP_VERSION_LABEL = 'V1.2'
+const IMAGE_PRELOAD_HOSTS = [
+  'https://world.honorofkings.com',
+  'https://game.gtimg.cn',
+  'https://game-1255653016.file.myqcloud.com',
+]
+const preloadedImageUrls = new Set<string>()
 
 type SharedChallenge = {
   config: GameConfig
@@ -196,6 +202,17 @@ function createWaveProfile(videoId: string): WaveProfile {
 
 function createInitialWaveHeights() {
   return Array.from({ length: WAVE_BARS }, () => 0.18 + Math.random() * 0.46)
+}
+
+function primeImage(url: string) {
+  if (!url || preloadedImageUrls.has(url) || typeof window === 'undefined') {
+    return
+  }
+
+  preloadedImageUrls.add(url)
+  const image = new Image()
+  image.decoding = 'async'
+  image.src = url
 }
 
 function isGuessTarget(value: string | null): value is GuessTarget {
@@ -578,6 +595,61 @@ function App() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    for (const host of IMAGE_PRELOAD_HOSTS) {
+      const selector = `link[data-preconnect-host="${host}"]`
+      if (document.head.querySelector(selector)) {
+        continue
+      }
+
+      const preconnect = document.createElement('link')
+      preconnect.rel = 'preconnect'
+      preconnect.href = host
+      preconnect.crossOrigin = 'anonymous'
+      preconnect.setAttribute('data-preconnect-host', host)
+      document.head.appendChild(preconnect)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!game || game.status !== 'playing' || game.question.mediaType !== 'image') {
+      return
+    }
+
+    primeImage(game.question.imageUrl)
+
+    const lookahead = 3
+    for (
+      let cursor = game.queueIndex + 1;
+      cursor < game.queue.length && cursor <= game.queueIndex + lookahead;
+      cursor += 1
+    ) {
+      const nextRecord = game.queue[cursor]
+      if (nextRecord.imageUrl) {
+        primeImage(nextRecord.imageUrl)
+      }
+    }
+  }, [game])
+
+  useEffect(() => {
+    if (viewMode !== 'gallery') {
+      return
+    }
+
+    const preloadCount = config.skinSource === 'official' ? 8 : 16
+    for (const skin of gallerySkins.slice(0, preloadCount)) {
+      primeImage(skin.imageUrl)
+    }
+  }, [viewMode, config.skinSource, gallerySkins])
+
+  useEffect(() => {
+    if (!selectedGallerySkin) {
+      return
+    }
+
+    primeImage(selectedGallerySkin.imageUrl)
+  }, [selectedGallerySkin])
 
   useEffect(() => {
     if (gameStatus !== 'playing' || gameDeadlineMs === null) {
@@ -1394,6 +1466,9 @@ function App() {
               <img
                 src={game.question.imageUrl}
                 alt={`Skin artwork prompt ${game.question.id}`}
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
               />
             )}
 
@@ -1630,7 +1705,7 @@ function App() {
           </div>
 
           <div className="gallery-grid">
-            {gallerySkins.map((skin) => (
+            {gallerySkins.map((skin, index) => (
               <article key={skin.id} className="gallery-card">
                 <button
                   type="button"
@@ -1647,7 +1722,9 @@ function App() {
                   <img
                     src={skin.imageUrl}
                     alt={`${skin.heroName} - ${skin.skinName}`}
-                    loading="lazy"
+                    loading={index < 8 ? 'eager' : 'lazy'}
+                    decoding="async"
+                    fetchPriority={index < 8 ? 'high' : 'auto'}
                   />
                   <div className="gallery-meta">
                     <p className="gallery-skin">{skin.skinName}</p>
