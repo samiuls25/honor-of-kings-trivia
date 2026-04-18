@@ -1,3 +1,6 @@
+import { recordMetricEvent } from './metrics-store.js'
+import { signChallengeFromParams } from './challenge-signature.js'
+
 const APP_NAME = 'Honor of Kings Trivia'
 const DEFAULT_DESCRIPTION =
   'Guess heroes, skins, and OST tracks. Can you beat this challenge?'
@@ -135,6 +138,23 @@ function getMetadata(url) {
   }
 }
 
+function getShareCategory(url) {
+  const view = url.searchParams.get('view')
+  if (view === 'gallery') {
+    return 'gallery'
+  }
+
+  if (view === 'ost-hall') {
+    return 'ost'
+  }
+
+  if (url.searchParams.get('challenge') === '1') {
+    return 'challenge'
+  }
+
+  return null
+}
+
 function getSafeImage(url) {
   const image = cleanText(url.searchParams.get('image'), 2048)
   if (!image) {
@@ -154,12 +174,28 @@ function getSafeImage(url) {
 
 function buildAppTarget(url) {
   const params = new URLSearchParams(url.searchParams)
+
+  if (params.get('challenge') === '1') {
+    params.set('sig', signChallengeFromParams(params))
+  }
+
   const query = params.toString()
   return query ? `${url.origin}/?${query}` : `${url.origin}/`
 }
 
 export default async (request) => {
   const url = new URL(request.url)
+
+  try {
+    await recordMetricEvent({
+      eventType: 'share_redirect_hit',
+      category: getShareCategory(url),
+      headers: request.headers,
+    })
+  } catch {
+    // Non-blocking: share links should still work if analytics storage is unavailable.
+  }
+
   const appTarget = buildAppTarget(url)
   const metadata = getMetadata(url)
   const imageUrl = getSafeImage(url)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { OST_DATASET_META, OST_TRACKS } from './data/ost'
 import {
   SKINS_HYBRID,
@@ -13,12 +13,17 @@ import {
   getScoreDelta,
   initialTimeLimitMs,
   isAnswerCorrect,
-  nextSkinFromQueue,
   shouldEndAfterAnswer,
   shuffle,
   validateOstDataset,
   validateSkinDataset,
 } from './game/engine'
+import {
+  detectSharedVisitCategory,
+  fetchMetricsSummary,
+  formatCompactCount,
+  trackMetricEvent,
+} from './metrics'
 import type {
   AnswerMode,
   GameConfig,
@@ -128,7 +133,7 @@ function ensureYouTubeIframeApi(): Promise<void> {
   return window.__ytIframeApiPromise
 }
 
-type EndReason = 'timeout' | 'wrong-answer' | 'manual' | null
+type EndReason = 'timeout' | 'wrong-answer' | 'manual' | 'completed-dataset' | null
 
 interface ActiveGame {
   status: 'playing' | 'ended'
@@ -155,7 +160,7 @@ interface Option<TValue extends string> {
 
 type ViewMode = 'play' | 'gallery' | 'ost-hall'
 const WAVE_BARS = 40
-const APP_VERSION_LABEL = 'V1.3.0'
+const APP_VERSION_LABEL = 'V1.3.1'
 const IMAGE_PRELOAD_HOSTS = [
   'https://world.honorofkings.com',
   'https://game.gtimg.cn',
@@ -170,6 +175,8 @@ type SharedChallenge = {
   correct: number
   wrong: number
   bestStreak: number
+  signature: string
+  verification: 'pending' | 'valid' | 'invalid'
 }
 
 type WaveProfile = {
@@ -270,6 +277,38 @@ function parseNonNegativeInt(value: string | null): number {
   }
 
   return parsed
+}
+
+async function verifyChallengeSignature(challenge: SharedChallenge): Promise<boolean> {
+  try {
+    const response = await fetch('/challenge/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        challenge: 1,
+        target: challenge.config.target,
+        source: challenge.config.skinSource,
+        answer: challenge.config.answerMode,
+        scoring: challenge.config.scoringStyle,
+        score: challenge.score,
+        correct: challenge.correct,
+        wrong: challenge.wrong,
+        best: challenge.bestStreak,
+        sig: challenge.signature,
+      }),
+    })
+
+    if (!response.ok) {
+      return false
+    }
+
+    const payload = (await response.json()) as { valid?: boolean }
+    return payload.valid === true
+  } catch {
+    return false
+  }
 }
 
 function buildAbsoluteUrl(pathname: string, params: URLSearchParams): string {
@@ -480,6 +519,8 @@ function resolveInitialRouteState(): InitialRouteState {
         correct: parseNonNegativeInt(params.get('correct')),
         wrong: parseNonNegativeInt(params.get('wrong')),
         bestStreak: parseNonNegativeInt(params.get('best')),
+        signature: params.get('sig') || '',
+        verification: 'pending',
       },
       selectedGallerySkin: null,
       hallTrackId: OST_TRACKS[0]?.id ?? '',
@@ -585,7 +626,17 @@ function App() {
   const [hallDuration, setHallDuration] = useState(0)
   const [hallPlayerError, setHallPlayerError] = useState<string | null>(null)
   const [shareFeedback, setShareFeedback] = useState<string | null>(null)
-  const [incomingChallenge] = useState<SharedChallenge | null>(
+  const [metricsSnapshot, setMetricsSnapshot] = useState<
+    Awaited<ReturnType<typeof fetchMetricsSummary>>
+  >(null)
+  const [showLiveStats, setShowLiveStats] = useState(() => {
+    if (typeof window === 'undefined') {
+      return true
+    }
+
+    return window.localStorage.getItem('hok-live-stats-hidden') !== '1'
+  })
+  const [incomingChallenge, setIncomingChallenge] = useState<SharedChallenge | null>(
     initialRouteState.incomingChallenge,
   )
 
@@ -645,6 +696,83 @@ function App() {
       })
     }, 2800)
   }
+
+  const refreshMetricsSnapshot = useCallback(() => {
+    void fetchMetricsSummary().then((snapshot) => {
+      if (!snapshot) {
+        return
+      }
+      setMetricsSnapshot(snapshot)
+    })
+  }, [])
+
+  useEffect(() => {
+    refreshMetricsSnapshot()
+
+    const timerId = window.setInterval(() => {
+      refreshMetricsSnapshot()
+    }, 60000)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [refreshMetricsSnapshot])
+
+  useEffect(() => {
+    trackMetricEvent('site_view')
+
+    const shareCategory = detectSharedVisitCategory(new URLSearchParams(window.location.search))
+    if (shareCategory) {
+      trackMetricEvent('share_visited', shareCategory)
+    }
+
+    // Pull a fresh snapshot shortly after initial events are sent.
+    window.setTimeout(() => {
+      refreshMetricsSnapshot()
+    }, 450)
+  }, [refreshMetricsSnapshot])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (showLiveStats) {
+      window.localStorage.removeItem('hok-live-stats-hidden')
+      return
+    }
+
+    window.localStorage.setItem('hok-live-stats-hidden', '1')
+  }, [showLiveStats])
+
+  useEffect(() => {
+    if (!incomingChallenge || incomingChallenge.verification !== 'pending') {
+      return
+    }
+
+    let cancelled = false
+
+    void verifyChallengeSignature(incomingChallenge).then((valid) => {
+      if (cancelled) {
+        return
+      }
+
+      setIncomingChallenge((previous) => {
+        if (!previous) {
+          return previous
+        }
+
+        return {
+          ...previous,
+          verification: valid ? 'valid' : 'invalid',
+        }
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [incomingChallenge])
 
   useEffect(() => {
     return () => {
@@ -1179,9 +1307,15 @@ function App() {
       .join(' | ')
 
     const shareText =
-      `I scored ${game.score} in Honor of Kings Trivia ` +
-      `(${game.correct} correct, ${game.wrong} wrong, best streak ${game.bestStreak}). ` +
-      `Mode: ${modeSummary}. Can you beat this challenge?`
+        game.endReason === 'completed-dataset'
+          ? game.wrong === 0
+            ? `I completed the full Honor of Kings Trivia dataset with a perfect clear (${game.correct} correct, 0 wrong, score ${game.score}). Mode: ${modeSummary}. Can you beat this run?`
+            : `I completed the full Honor of Kings Trivia dataset (${game.correct} correct, ${game.wrong} wrong, score ${game.score}). Mode: ${modeSummary}. Can you beat this run?`
+          : `I scored ${game.score} in Honor of Kings Trivia ` +
+            `(${game.correct} correct, ${game.wrong} wrong, best streak ${game.bestStreak}). ` +
+            `Mode: ${modeSummary}. Can you beat this challenge?`
+
+    trackMetricEvent('share_generated', 'challenge')
 
     try {
       if (navigator.share) {
@@ -1201,6 +1335,7 @@ function App() {
     }
 
     clearShareFeedbackSoon()
+    refreshMetricsSnapshot()
   }
 
   const shareGalleryCard = async (skin: SkinRecord) => {
@@ -1208,6 +1343,8 @@ function App() {
     const shareText =
       `${skin.skinName} (${skin.heroName}) in Honor of Kings Trivia gallery. ` +
       'Open this link to jump directly to the card.'
+
+    trackMetricEvent('share_generated', 'gallery')
 
     try {
       if (navigator.share) {
@@ -1227,6 +1364,7 @@ function App() {
     }
 
     clearShareFeedbackSoon()
+    refreshMetricsSnapshot()
   }
 
   const shareOstTrack = async () => {
@@ -1239,6 +1377,8 @@ function App() {
     const shareText =
       `Check out ${formatTrackTitle(selectedHallTrack.trackTitle)} by ` +
       `${selectedHallTrack.artistName} in the Honor of Kings OST Hall.`
+
+    trackMetricEvent('share_generated', 'ost')
 
     try {
       if (navigator.share) {
@@ -1258,6 +1398,7 @@ function App() {
     }
 
     clearShareFeedbackSoon()
+    refreshMetricsSnapshot()
   }
 
   const selectHallTrack = (trackId: string, scrollToPlayer: boolean) => {
@@ -1302,7 +1443,10 @@ function App() {
     }
 
     try {
-      setGame(buildInitialGame(config))
+      const initialGame = buildInitialGame(config)
+      setGame(initialGame)
+      trackMetricEvent('game_started', config.target === 'ost-title' ? 'ost' : 'standard')
+      refreshMetricsSnapshot()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start this mode.'
       setSetupError(message)
@@ -1327,7 +1471,10 @@ function App() {
     }
 
     try {
-      setGame(buildInitialGame(game.config))
+      const nextGame = buildInitialGame(game.config)
+      setGame(nextGame)
+      trackMetricEvent('game_started', game.config.target === 'ost-title' ? 'ost' : 'standard')
+      refreshMetricsSnapshot()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start this mode.'
       setSetupError(message)
@@ -1493,15 +1640,20 @@ function App() {
             return previous
           }
 
-          const { queue, queueIndex, nextSkin } = nextSkinFromQueue(
-            previous.queue,
-            previous.queueIndex,
-            previous.question.recordId,
-          )
+          const reachedPoolEnd = previous.queueIndex >= previous.queue.length - 1
+          if (reachedPoolEnd) {
+            return {
+              ...previous,
+              status: 'ended',
+              endReason: 'completed-dataset',
+            }
+          }
+
+          const queueIndex = previous.queueIndex + 1
+          const nextSkin = previous.queue[queueIndex]
 
           return {
             ...previous,
-            queue,
             queueIndex,
             question: createQuestion(nextSkin, previous.config, previous.queue),
           }
@@ -1520,6 +1672,10 @@ function App() {
         ? 'Run ended on your first wrong answer.'
         : game?.endReason === 'manual'
           ? 'Game ended by player.'
+          : game?.endReason === 'completed-dataset'
+            ? game?.wrong === 0
+              ? 'Legendary clear: you completed the full dataset with a perfect run.'
+              : 'Dataset completed: you reached the end of the full question pool.'
           : 'Session complete.'
 
   const toggleOstPlayback = () => {
@@ -1610,6 +1766,61 @@ function App() {
           best runs, favorite gallery cards, and top OST tracks with friends and the community!
         </p>
 
+        {metricsSnapshot && (
+          <>
+            <div className="live-stats-toggle-row">
+              <p className="live-stats-toggle-note">Live Community Metrics</p>
+              <button
+                type="button"
+                className="live-stats-toggle-button"
+                onClick={() => setShowLiveStats((previous) => !previous)}
+                aria-expanded={showLiveStats}
+              >
+                {showLiveStats ? 'Hide Stats' : 'Show Stats'}
+              </button>
+            </div>
+
+            {showLiveStats && (
+              <section className="live-stats-strip" aria-label="Community metrics">
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Site Views</p>
+                  <p className="live-stat-value">{formatCompactCount(metricsSnapshot.site_views)}</p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Unique Visitors</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.unique_site_visitors)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Share Links Generated</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.share_links_generated)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Share Links Visited</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.share_links_visited)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">Normal Games Played</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.games_played_standard)}
+                  </p>
+                </article>
+                <article className="live-stat-tile">
+                  <p className="live-stat-label">OST Games Played</p>
+                  <p className="live-stat-value">
+                    {formatCompactCount(metricsSnapshot.games_played_ost)}
+                  </p>
+                </article>
+              </section>
+            )}
+          </>
+        )}
+
         <div className="view-switch" role="tablist" aria-label="App sections">
           <button
             type="button"
@@ -1660,12 +1871,32 @@ function App() {
 
           {incomingChallenge && (
             <div className="share-highlight" role="status">
-              <p className="share-highlight-kicker">Shared Challenge</p>
-              <p className="share-highlight-title">Can you beat this run?</p>
-              <p className="share-highlight-meta">
-                Score {incomingChallenge.score}, {incomingChallenge.correct} correct,{' '}
-                {incomingChallenge.wrong} wrong, best streak {incomingChallenge.bestStreak}
-              </p>
+              {incomingChallenge.verification === 'invalid' ? (
+                <>
+                  <p className="share-highlight-kicker">Shared Challenge</p>
+                  <p className="share-highlight-title">Skill issue :)</p>
+                  <p className="share-highlight-meta">
+                    Edited score parameters detected. Nice try, run the challenge for real.
+                  </p>
+                </>
+              ) : incomingChallenge.verification === 'pending' ? (
+                <>
+                  <p className="share-highlight-kicker">Shared Challenge</p>
+                  <p className="share-highlight-title">Verifying challenge link...</p>
+                  <p className="share-highlight-meta">
+                    Validating score integrity before showing challenge stats.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="share-highlight-kicker">Shared Challenge</p>
+                  <p className="share-highlight-title">Can you beat this run?</p>
+                  <p className="share-highlight-meta">
+                    Score {incomingChallenge.score}, {incomingChallenge.correct} correct,{' '}
+                    {incomingChallenge.wrong} wrong, best streak {incomingChallenge.bestStreak}
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -1986,7 +2217,41 @@ function App() {
       )}
 
       {viewMode === 'play' && game?.status === 'ended' && (
-        <section className="panel">
+        <section
+          className={[
+            'panel',
+            'results-panel',
+            game.endReason === 'completed-dataset'
+              ? game.wrong === 0
+                ? 'results-panel-perfect'
+                : 'results-panel-complete'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {game.endReason === 'completed-dataset' && (
+            <div
+              className={
+                game.wrong === 0
+                  ? 'celebration-layer celebration-perfect'
+                  : 'celebration-layer celebration-complete'
+              }
+              aria-hidden="true"
+            >
+              {Array.from({ length: game.wrong === 0 ? 18 : 14 }, (_, index) => (
+                <span
+                  key={`celebration-${index}`}
+                  className="celebration-piece"
+                  style={{
+                    left: `${((index * 17) % 95) + 2}%`,
+                    animationDelay: `${(index % 6) * 0.14}s`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
           <h2>Results</h2>
           <p className="result-subtitle">{endReasonLabel}</p>
 

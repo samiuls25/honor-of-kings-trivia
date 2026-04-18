@@ -10,6 +10,18 @@ A fun little trivia web app for guessing heroes and skins from splash art, or gu
 - **V1.1.X**: Added Skin Gallery mode for standalone artwork browsing outside active trivia rounds.
 - **V1.0.X**: Initial launch with hero/skin trivia core loop, timer-based runs, official capture ingestion pipeline, and score tracking.
 
+## Live Community Stats
+
+| Category | Live Counters |
+| --- | --- |
+| Traffic | [![Site Views](https://img.shields.io/endpoint?url=https%3A%2F%2Fhoktrivia.netlify.app%2Fmetrics%2Fbadge%3Fmetric%3Dsite_views)](https://hoktrivia.netlify.app/metrics/summary) [![Unique Visitors](https://img.shields.io/endpoint?url=https%3A%2F%2Fhoktrivia.netlify.app%2Fmetrics%2Fbadge%3Fmetric%3Dunique_site_visitors)](https://hoktrivia.netlify.app/metrics/summary) |
+| Sharing | [![Share Links Generated](https://img.shields.io/endpoint?url=https%3A%2F%2Fhoktrivia.netlify.app%2Fmetrics%2Fbadge%3Fmetric%3Dshare_links_generated)](https://hoktrivia.netlify.app/metrics/summary) [![Share Links Visited](https://img.shields.io/endpoint?url=https%3A%2F%2Fhoktrivia.netlify.app%2Fmetrics%2Fbadge%3Fmetric%3Dshare_links_visited)](https://hoktrivia.netlify.app/metrics/summary) |
+| Gameplay | [![Normal Games Played](https://img.shields.io/endpoint?url=https%3A%2F%2Fhoktrivia.netlify.app%2Fmetrics%2Fbadge%3Fmetric%3Dgames_played_standard)](https://hoktrivia.netlify.app/metrics/summary) [![OST Games Played](https://img.shields.io/endpoint?url=https%3A%2F%2Fhoktrivia.netlify.app%2Fmetrics%2Fbadge%3Fmetric%3Dgames_played_ost)](https://hoktrivia.netlify.app/metrics/summary) |
+
+These counters update from live app events.
+README badge refresh can lag for several minutes because of GitHub image proxy and badge caching, even when the site has already updated.
+For immediate values, open: https://hoktrivia.netlify.app/metrics/summary
+
 
 ## Visuals: Game/Gallery/OST Hall
 
@@ -64,7 +76,7 @@ A fun little trivia web app for guessing heroes and skins from splash art, or gu
   - Guess Skin Name
   - Guess OST Track Title
 - Answer input modes:
-  - Typed entry (case-insensitive)
+  - Typed entry (case-insensitive, spacing-tolerant, and lightly typo-tolerant)
   - 4-option multiple choice
 - Scoring styles:
   - 5 Minute Easy (+1 correct, no penalty)
@@ -87,6 +99,9 @@ A fun little trivia web app for guessing heroes and skins from splash art, or gu
 - OST mode:
   - Embedded audio/video player for track-based questions
   - Optional artwork reveal toggle while answering
+- Progression:
+  - Questions avoid repeats until the active dataset pool is fully completed
+  - Completing the full pool ends the run with a special completion result that can be shared
 - Responsive UI for desktop and mobile.
 
 ## Stack
@@ -136,7 +151,16 @@ npx netlify deploy --prod --dir=dist --functions=netlify/functions
 Function and routing files:
 
 - `netlify/functions/share.js`
+- `netlify/functions/metrics-event.js`
+- `netlify/functions/metrics-summary.js`
+- `netlify/functions/metrics-badge.js`
 - `netlify.toml`
+
+Metrics persistence notes:
+
+- Live counters are stored in Netlify Blobs via serverless functions.
+- Counters begin at the time this tracking feature is deployed.
+- `share_redirect_hits` includes share endpoint hits (often social crawlers), while `share_links_visited` tracks app-side shared-link landings.
 
 ## Real data ingestion workflow
 
