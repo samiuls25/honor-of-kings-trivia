@@ -160,7 +160,7 @@ interface Option<TValue extends string> {
 
 type ViewMode = 'play' | 'gallery' | 'ost-hall'
 const WAVE_BARS = 40
-const APP_VERSION_LABEL = 'V1.3.1'
+const APP_VERSION_LABEL = 'V1.3.2'
 const IMAGE_PRELOAD_HOSTS = [
   'https://world.honorofkings.com',
   'https://game.gtimg.cn',
