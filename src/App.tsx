@@ -160,7 +160,7 @@ interface Option<TValue extends string> {
 
 type ViewMode = 'play' | 'gallery' | 'ost-hall'
 const WAVE_BARS = 40
-const APP_VERSION_LABEL = 'V1.3.2'
+const APP_VERSION_LABEL = 'V1.3.3'
 const IMAGE_PRELOAD_HOSTS = [
   'https://world.honorofkings.com',
   'https://game.gtimg.cn',
@@ -1940,21 +1940,31 @@ function App() {
 
           <div className="setting-group">
             <h3>Skin Dataset Source</h3>
+            {config.target === 'ost-title' && (
+              <p className="result-subtitle">Skin source is disabled for Guess OST Track mode.</p>
+            )}
             <div className="option-grid">
               {skinSourceOptions.map((option) => (
                 <button
                   key={option.value}
                   type="button"
+                  disabled={config.target === 'ost-title'}
                   className={
                     config.skinSource === option.value
                       ? 'option-card active'
                       : 'option-card'
                   }
                   onClick={() =>
-                    setConfig((previous) => ({
-                      ...previous,
-                      skinSource: option.value,
-                    }))
+                    setConfig((previous) => {
+                      if (previous.target === 'ost-title') {
+                        return previous
+                      }
+
+                      return {
+                        ...previous,
+                        skinSource: option.value,
+                      }
+                    })
                   }
                 >
                   <span className="title">{option.label}</span>
@@ -2018,8 +2028,9 @@ function App() {
 
           <div className="setup-footer">
             <p>
-              Selected skin source: {getModeLabel(skinSourceOptions, config.skinSource)}
-              {' '}({SKIN_SOURCE_META[config.skinSource].items} entries).
+              {config.target === 'ost-title'
+                ? 'Selected skin source is not used in Guess OST Track mode.'
+                : `Selected skin source: ${getModeLabel(skinSourceOptions, config.skinSource)} (${SKIN_SOURCE_META[config.skinSource].items} entries).`}
             </p>
             <p>
               OST dataset: {OST_DATASET_META.items} tracks from {OST_DATASET_META.source}.
