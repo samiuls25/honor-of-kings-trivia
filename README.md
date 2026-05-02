@@ -1,11 +1,11 @@
 # Honor of Kings Skin Trivia
 
-A fun little trivia web app for guessing heroes and skins from splash art, or guessing OST track titles from audio! Test your knowledge or just enjoy the artwork and OSTs. Share your score with friends or share specific gallery artwork and OSTs you like. Play the game here: https://hoktrivia.netlify.app/
+A fun little trivia web app for guessing heroes and skins from splash art, or guessing OST track titles from audio, or even guessing heroes from identity profiles and relationship details! Test your knowledge or just enjoy the artwork and OSTs. Share your score with friends or share specific gallery artwork and OSTs you like. Play the game here: https://hoktrivia.netlify.app/
 
 
 ## Release Highlights
 
-- **V1.5.X**: Added Hero Gallery. Added Hero Relationship mode. Players get directional relationship clues with hero portrait + name context, then guess the related hero (typed or portrait-enabled multiple choice). Added dedicated relationship ingestion pipeline sourced from the official relationship data feed.
+- **V1.5.X**: Added Hero Gallery. Added Hero Relationship mode. Players get directional relationship clues with hero portrait + name context, then guess the related hero (typed or portrait-enabled multiple choice). Added dedicated relationship ingestion pipeline sourced from the official relationship data feed. Custom session limits, manual next, and answer highlight states added. 
 - **V1.4.X**: Added Hero Identity mode. Players see identity profile clues and guess the hero (typed or multiple choice with portrait options). Added dedicated hero identity ingestion pipeline from official hero detail API.
 - **V1.3.X**: Introduced the all-new OST Hall with soundtrack browsing, scrubber seeking, and shareable track links. Optimized qing api data loading performance. OST Hall UX polish (scroll-to-player/selection clarity).
 - **V1.2.X**: Introduced OST Trivia Mode (waveform and track card display options) and OST ingestion pipeline. Added source-isolated/selectable data pipelines (newly integrated and polished data from qing api, official capture, hybrid). Expanded Gallery Mode with clickable cards for full high definition picture view. Selectable skin sources/hybrid mode and OST visualizer polish. Expanded sharing with challenge and gallery deep links plus social-preview metadata support.
@@ -29,7 +29,7 @@ For immediate values, open: https://hoktrivia.netlify.app/metrics/summary
 
 ### Trivia Mode Home Page
 <!-- <img width="1902" height="941" alt="image" src="https://github.com/user-attachments/assets/dfd52c9f-8bca-4d23-9bc4-21039b64bf74" /> -->
-<img width="1899" height="939" alt="image" src="https://github.com/user-attachments/assets/58942ef3-1d57-4b53-a6d6-724f935937ae" />
+<img width="1900" height="936" alt="image" src="https://github.com/user-attachments/assets/934fcac9-7a49-469b-a7ad-292cd0de3290" />
 
 
 ### Trivia Mode Game Page
@@ -96,6 +96,7 @@ For immediate values, open: https://hoktrivia.netlify.app/metrics/summary
   - 5 Minute Easy (+1 correct, no penalty)
   - 5 Minute Hard (+1 correct, -1 wrong)
   - Sudden Death (first wrong ends the run)
+  - Custom Session (choose how many questions or minutes, or unlimited (ends when dataset is finished))
 - Gallery mode:
   - Separate non-game hero gallery for browsing artwork
   - Separate non-game skin gallery for browsing artwork and sharing
